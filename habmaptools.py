@@ -77,3 +77,42 @@ def analysis_mesh(vertice_dataset, faces_dataset):
     #Areas of faces
     S=np.sqrt(np.abs(np.sum((v1-v3)**2,axis=1)*np.sum((v2-v3)**2,axis=1)-np.sum((v1-v3)*(v2-v3),axis=1))**2)/2
     return(d, S)
+
+#For 0.05 m resolution mesh models
+def main_mesh(model_path, path_output):
+    import os
+    import numpy as np
+    property_data, vertice_dataset, faces_dataset=ply_read(model_path)
+    write_csv(property_data, vertice_dataset, faces_dataset,path_output)
+
+#For 0.01 m resolution point cloud models
+def main_raw(model_path, path_output):
+    import os
+    import pandas as pd
+    import numpy as np
+    p, vertice_dataset, f=ply_read(model_path)
+    vertice_dataset2=pd.DataFrame(vertice_dataset)
+    vertice_dataset2.iloc[:,0:3].to_csv(path_output+'ply_parts/vertice_dataset_raw.csv',header=False, index=False)
+    vertice_dataset2.iloc[:,3:6].to_csv(path_output+'ply_parts/vertice_normal_raw.csv',header=False, index=False)
+
+#Func05 Prepare terrain variables set list
+def terrain_variables_set(kernels, param_no_kernel, param_use_kernel, param_add):
+    params_list=["depth", "height", "rugosity", "BPI", "orix", "oriy", "azimuth", "shoreside", "slope", "rgstd","sp"]
+    param_all=[]
+    if(type(param_no_kernel[0])==str):
+        for (i, param) in enumerate(param_no_kernel):
+            param_all.append(param)
+    elif(type(param_no_kernel[0])==int):
+        for (i, param) in enumerate(param_no_kernel):
+            if(param<2):
+                param_all.append(params_list[param])
+    if(type(param_use_kernel[0])==str):
+        for (i, param) in enumerate(param_use_kernel):
+            for kernel in kernels:
+                param_all.append(param+str(kernel).replace(".","_"))
+    elif(type(param_use_kernel[0])==int):
+        for (i, param) in enumerate(param_use_kernel):
+            if(param>1):
+                for kernel in kernels:
+                    param_all.append(params_list[param]+str(kernel).replace(".","_"))
+    return(param_all)
