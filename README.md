@@ -13,15 +13,5 @@ Library: numpy, pandas, matplotlib, scikit-learn, open-cv
 
 
 
-#Demo
-![Test Image 1](sample_output/test.png)
 
 
-
-#引用
-本コードを利用される際には，以下の論文を引用してください．
-#Citation
-Need for citing 
-Kanki, T., ~~~ (2021)
-or
-Kanki, T., ~~~ (2021)
