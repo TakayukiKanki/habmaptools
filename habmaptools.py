@@ -185,7 +185,7 @@ def calc_ruggedness(ext_index, v3, d, vertice_matrix):
 
 #Main03 calculate terrain variables
 #default sets of terrain variables
-def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
+def main_calc_variables(model_index, path_data, path_output, kernel_size=[0.1,0.2,0.4,0.8], stop_point=-1):
     import numpy as np
     import pandas as pd
     import os
@@ -198,12 +198,13 @@ def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
     sgn_nz=np.sign(np.mean(vert_normal_vert[:,2]))#average of z components of normals of vertice.
     bottom=np.min(vert_matrix_mesh[:,2])
     tilt_direction=calc_metaorientation(vert_matrix_mesh, sgn_nz)
-    varis=np.zeros((len(faces_data), 34))
-    kernel_size=[0.1,0.2,0.4,0.8]
+    varis=np.zeros((len(faces_data), 2+len(kernel_size)*8))
+    
+    start_index=[i*len(kernel_size)+2 for i in range(8)]
+    
     #calc. simple(no kernel) parameter (depth, height)
     varis[:,0]=(vert_matrix_mesh[faces_data[:,0],2]+vert_matrix_mesh[faces_data[:,1],2]+vert_matrix_mesh[faces_data[:,2],2])/3
     varis[:,1]=varis[:,0]-bottom
-    
     for i in range(len(faces_data)):
         face_normal=np.mean(vert_normal_mesh[faces_data[i,:],0:3], axis=0)#need for correct orientation of face
         X_G=np.mean(vert_matrix_mesh[faces_data[i,:],0:3], axis=0)#calculate center of gravity(G) of face
@@ -215,41 +216,129 @@ def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
             ext_index=np.array(distance<k**2) #extract vertice >k cm away from G
             ext_index_plane=np.array(distance_plane<k**2) #extract vertice >k cm away from G on x-y plane
             z_ext=vert_matrix_vert[np.nonzero(vert_matrix_vert[:,2]*ext_index_plane),2]
-            varis[i,kcount+2]=X_G[2]-np.min(z_ext)
-            varis[i,kcount+6]=X_G[2]-np.mean(z_ext)
+            varis[i,kcount+start_index[0]]=X_G[2]-np.min(z_ext)
+            varis[i,kcount+start_index[1]]=X_G[2]-np.mean(z_ext)
             
             plane_params = calc_pca(i, ext_index, vert_matrix_vert, vert_normal_vert, face_normal, normal_correct_mode="face")
-            varis[i, kcount+10], varis[i, kcount+14],varis[i,kcount+18], varis[i,kcount+22], varis[i, kcount+26]=calc_orientations_and_slope(plane_params[6:9], tilt_direction)
-            varis[i, kcount+30]=calc_ruggedness(np.array(ext_index),plane_params[6:9], plane_params[9], vert_matrix_vert)
-        
+            varis[i, kcount+start_index[2]], varis[i, kcount+start_index[3]],varis[i,kcount+start_index[4]], varis[i,kcount+start_index[5]], varis[i, kcount+start_index[6]]=calc_orientations_and_slope(plane_params[6:9], tilt_direction)
+            varis[i, kcount+start_index[7]]=calc_ruggedness(np.array(ext_index),plane_params[6:9], plane_params[9], vert_matrix_vert)
+            
         if(i==stop_point): #stop point for test
             break
     pd.DataFrame(varis).to_csv(path_output+"terrain_variables_"+model_index+".csv",header=False, index=False)
     return
 
-#Uncompleted
-#Main02-B Any set of terrain variables
-def main_calc_variables2(path_data, path_output, param_kernel_labels):
-    return    
+def main_ply(model_index, dir_name, param_kernel_labels, path_now, file_name="mydata"):
+    #os.chdir(path_now+"\model"+model_index)
+    import pandas as pd
+    import numpy as np
+    import os
+    new_dir_path=path_now+"/model"+model_index+"/variables_map/"
+    os.makedirs(new_dir_path, exist_ok=True)
+    
+    #パラメータの読み込み
+    ter_variables=pd.read_csv(path_now+"\model"+model_index+"\\"+file_name+model_index+".csv", header=None)
+    ter_variables=ter_variables.astype(float)
+    
+    #点の座標，法線，色の読み込み
+    vertice_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_dataset.csv", header=None)
+    vertice_data=vertice_data.round(6)
+    vertice_vector=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_normal.csv", header=None)
+    vertice_vector=vertice_vector.round(6)
+    vertice_color=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_color.csv", header=None)
+    vertice_color=vertice_color.astype(int)
+    vertice_data_all=pd.concat([vertice_data, vertice_vector], axis=1)
+    
+    #面のデータ
+    faces_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\faces_dataset.csv", header=None)
+    #プロパティ
+    p_file=open(path_now+"\model"+model_index+r"\ply_parts\property_data.csv")
+    property_data=[]
+    for line in p_file:
+        property_data.append(line[1:])
+    property_data=property_data[::2]
+    
+    for (i,param) in enumerate(param_kernel_labels):
+        ter_var=ter_variables.iloc[:,i]
+        color_data=[]
+        try:
+            color_vec, color_data = color_designer5(ter_var, cmap="viridis", mode="1")
+            color_vec=pd.DataFrame(color_vec)
+        except ValueError:
+            color_vec=pd.DataFrame(np.zeros_like(ter_var))
+            print(param,"<- this parameter is all-zero or flat")
+        #色の情報をコメントに記録する
+        import copy
+        property_data2=copy.copy(property_data)
+        property_data2.insert(2, "comment "+str(color_data)+"\n")
+        plydata=array_to_ply(property_data2, vertice_data_all, vertice_color, faces_data, faces_color=color_vec)
+        #record.append(param)
+        save_ply(path_now+"\model"+model_index+"\\"+dir_name+r"/"+param+"f.ply", plydata)
 
-#Func05 Prepare terrain variables set list
-def terrain_variables_set(kernels, param_no_kernel, param_use_kernel):
-    params_list=["depth", "height", "rugosity", "BPI", "orix", "oriy", "azimuth", "shoreside", "slope", "rgstd","sp"]
-    param_all=[]
-    if(type(param_no_kernel[0])==str):
-        for (i, param) in enumerate(param_no_kernel):
-            param_all.append(param)
-    elif(type(param_no_kernel[0])==int):
-        for (i, param) in enumerate(param_no_kernel):
-            if(param<2):
-                param_all.append(params_list[param])
-    if(type(param_use_kernel[0])==str):
-        for (i, param) in enumerate(param_use_kernel):
-            for kernel in kernels:
-                param_all.append(param+str(kernel).replace(".","_"))
-    elif(type(param_use_kernel[0])==int):
-        for (i, param) in enumerate(param_use_kernel):
-            if(param>1):
-                for kernel in kernels:
-                    param_all.append(params_list[param]+str(kernel).replace(".","_"))
-    return(param_all)
+
+
+
+
+
+def make_master_occurrence(path_env, path_occurrence, species, path_out, sep):
+    import numpy as np
+    import pandas as pd
+    import copy
+    env_data=pd.read_csv(path_env)
+    occurrence_data=pd.read_csv(path_occurrence)
+    master_data=pd.DataFrame([])
+    for (i, specie) in enumerate(species):
+        if(specie=="background"):
+            data=env_data[::sep].copy() #多すぎるのでランダムに10%だけ使う
+            data["species"]=[specie]*len(data)
+            print(specie, len(data))
+            master_data=pd.concat([master_data,data])
+        else:
+            ext=occurrence_data[occurrence_data.iloc[:,0]==specie].iloc[:,1]
+            print(specie, len(ext))
+            data=env_data.loc[ext,:]
+            data["species"]=[specie]*len(data)
+            master_data=pd.concat([master_data,data])
+    master_data.to_csv(path_out+"/master_occurrence.csv")
+    
+    
+def main_pre_maxent(path_now, path_out2, path_dataset, model_file_train, model_file_test, asc, species, param_all_raw):
+    import numpy as np
+    import pandas as pd
+    import os
+    mesh_nums=[0]
+    for model_index in model_file_train+model_file_test:
+        faces_data=np.array(pd.read_csv(path_now+r"Sfm_model/model"+model_index+"/ply_parts/faces_dataset.csv", header=None))
+        mesh_nums.append(len(faces_data))
+
+    path_out=path_now+"/maxent_data/"+path_out2
+    os.makedirs(path_out, exist_ok=True)
+    
+    model_file_all=model_file_train+model_file_test
+
+    #地形条件のデータセット(raw)
+    make_env_dataset2(param_all_raw, model_file_all, path_now+"Sfm_model/", path_out, mode="raw_add", filename="_raw")
+    #地形条件のデータセット(mesh)
+    make_env_dataset2(param_all_raw, model_file_all, path_now+"Sfm_model/", path_out, mode="mesh_add", filename="_mesh")
+
+    #出現データセット
+    make_occurrence_dataset2(species, model_file_train, path_now+"Sfm_model/", path_out, path_dataset, filename="")
+
+    #種＆地形条件のデータセット
+    path_env=path_out+"/envdata_raw.csv"
+    path_occurrence=path_out+"/occurrence.csv"
+    make_master_occurrence(path_env, path_occurrence, species, path_out)
+
+    #maxent用データの準備(ascファイルと出現データをmaxent_data/**/.asc階層に)
+    if(asc==True):
+        env_data_all=pd.read_csv(path_out+r"/envdata_raw.csv")
+        for (i, param_name) in enumerate(param_all_raw):
+            os.makedirs(path_out+"/asc_file/", exist_ok=True)
+            param_to_asc(param_name, env_data_all.iloc[:,i], path_out+"/asc_file/")
+    else:
+        print("asc file not renewed.")
+
+    s="train: "+str(model_file_train)+"test: "+str(model_file_test)
+    path_w=path_out+"/use_model.txt"
+    with open(path_w, mode='w') as f:
+        f.write(s)

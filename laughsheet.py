@@ -847,3 +847,25 @@ def out_habitatmap(path_out, model_index, maxent_result, specie, mode="2"):
     save_ply(path_out+"/habitat_map/predict_"+specie+model_index+".ply", plydata)
 
     
+
+#Func05 Prepare terrain variables set list
+def terrain_variables_set(kernels, param_no_kernel, param_use_kernel):
+    params_list=["depth", "height", "rugosity", "BPI", "orix", "oriy", "azimuth", "shoreside", "slope", "rgstd","sp"]
+    param_all=[]
+    if(type(param_no_kernel[0])==str):
+        for (i, param) in enumerate(param_no_kernel):
+            param_all.append(param)
+    elif(type(param_no_kernel[0])==int):
+        for (i, param) in enumerate(param_no_kernel):
+            if(param<2):
+                param_all.append(params_list[param])
+    if(type(param_use_kernel[0])==str):
+        for (i, param) in enumerate(param_use_kernel):
+            for kernel in kernels:
+                param_all.append(param+str(kernel).replace(".","_"))
+    elif(type(param_use_kernel[0])==int):
+        for (i, param) in enumerate(param_use_kernel):
+            if(param>1):
+                for kernel in kernels:
+                    param_all.append(params_list[param]+str(kernel).replace(".","_"))
+    return(param_all)

@@ -185,7 +185,7 @@ def calc_ruggedness(ext_index, v3, d, vertice_matrix):
 
 #Main03 calculate terrain variables
 #default sets of terrain variables
-def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
+def main_calc_variables(model_index, path_data, path_output, kernel_size=[0.1,0.2,0.4,0.8], stop_point=-1):
     import numpy as np
     import pandas as pd
     import os
@@ -198,13 +198,13 @@ def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
     sgn_nz=np.sign(np.mean(vert_normal_vert[:,2]))#average of z components of normals of vertice.
     bottom=np.min(vert_matrix_mesh[:,2])
     tilt_direction=calc_metaorientation(vert_matrix_mesh, sgn_nz)
-    varis=np.zeros((len(faces_data), 34))
-    kernel_size=[0.1,0.2,0.4,0.8]
+    varis=np.zeros((len(faces_data), 2+len(kernel_size)*8))
+    
+    start_index=[i*len(kernel_size)+2 for i in range(8)]
+    
     #calc. simple(no kernel) parameter (depth, height)
     varis[:,0]=(vert_matrix_mesh[faces_data[:,0],2]+vert_matrix_mesh[faces_data[:,1],2]+vert_matrix_mesh[faces_data[:,2],2])/3
     varis[:,1]=varis[:,0]-bottom
-    
-    #
     for i in range(len(faces_data)):
         face_normal=np.mean(vert_normal_mesh[faces_data[i,:],0:3], axis=0)#need for correct orientation of face
         X_G=np.mean(vert_matrix_mesh[faces_data[i,:],0:3], axis=0)#calculate center of gravity(G) of face
@@ -216,22 +216,17 @@ def main_calc_variables(model_index, path_data, path_output, stop_point=-1):
             ext_index=np.array(distance<k**2) #extract vertice >k cm away from G
             ext_index_plane=np.array(distance_plane<k**2) #extract vertice >k cm away from G on x-y plane
             z_ext=vert_matrix_vert[np.nonzero(vert_matrix_vert[:,2]*ext_index_plane),2]
-            varis[i,kcount+2]=X_G[2]-np.min(z_ext)
-            varis[i,kcount+6]=X_G[2]-np.mean(z_ext)
+            varis[i,kcount+start_index[0]]=X_G[2]-np.min(z_ext)
+            varis[i,kcount+start_index[1]]=X_G[2]-np.mean(z_ext)
             
             plane_params = calc_pca(i, ext_index, vert_matrix_vert, vert_normal_vert, face_normal, normal_correct_mode="face")
-            varis[i, kcount+10], varis[i, kcount+14],varis[i,kcount+18], varis[i,kcount+22], varis[i, kcount+26]=calc_orientations_and_slope(plane_params[6:9], tilt_direction)
-            varis[i, kcount+30]=calc_ruggedness(np.array(ext_index),plane_params[6:9], plane_params[9], vert_matrix_vert)
-        
+            varis[i, kcount+start_index[2]], varis[i, kcount+start_index[3]],varis[i,kcount+start_index[4]], varis[i,kcount+start_index[5]], varis[i, kcount+start_index[6]]=calc_orientations_and_slope(plane_params[6:9], tilt_direction)
+            varis[i, kcount+start_index[7]]=calc_ruggedness(np.array(ext_index),plane_params[6:9], plane_params[9], vert_matrix_vert)
+            
         if(i==stop_point): #stop point for test
             break
     pd.DataFrame(varis).to_csv(path_output+"terrain_variables_"+model_index+".csv",header=False, index=False)
     return
-
-#Uncompleted
-#Main02-B Any set of terrain variables
-def main_calc_variables2(path_data, path_output, param_kernel_labels):
-    return    
 
 #Func05 Prepare terrain variables set list
 def terrain_variables_set(kernels, param_no_kernel, param_use_kernel):
@@ -254,3 +249,25 @@ def terrain_variables_set(kernels, param_no_kernel, param_use_kernel):
                 for kernel in kernels:
                     param_all.append(params_list[param]+str(kernel).replace(".","_"))
     return(param_all)
+
+
+def make_master_occurrence(path_env, path_occurrence, species, path_out, sep):
+    import numpy as np
+    import pandas as pd
+    import copy
+    env_data=pd.read_csv(path_env)
+    occurrence_data=pd.read_csv(path_occurrence)
+    master_data=pd.DataFrame([])
+    for (i, specie) in enumerate(species):
+        if(specie=="background"):
+            data=env_data[::sep].copy() #多すぎるのでランダムに10%だけ使う
+            data["species"]=[specie]*len(data)
+            print(specie, len(data))
+            master_data=pd.concat([master_data,data])
+        else:
+            ext=occurrence_data[occurrence_data.iloc[:,0]==specie].iloc[:,1]
+            print(specie, len(ext))
+            data=env_data.loc[ext,:]
+            data["species"]=[specie]*len(data)
+            master_data=pd.concat([master_data,data])
+    master_data.to_csv(path_out+"/master_occurrence.csv")
