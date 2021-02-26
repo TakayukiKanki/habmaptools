@@ -183,6 +183,13 @@ def calc_ruggedness(ext_index, v3, d, vertice_matrix):
     return(ruggedness_stdheight)
 
 
+terrain_variables_list=["depth","height","rugosity01", "rugosity02", "rugosity04", "rugosity08",
+                       "bpi01", "bpi02", "bpi04", "bpi08", "orix01", "orix02", "orix04", "orix08",
+                        "oriy01", "oriy02", "oriy04", "oriy08",
+                        'azimuth0_1', 'azimuth0_2', 'azimuth0_4', 'azimuth0_8',
+                        'shoreside0_1', 'shoreside0_2', 'shoreside0_4', 'shoreside0_8',
+                        'slope0_1', 'slope0_2', 'slope0_4', 'slope0_8', 'rg_std0_1', 'rg_std0_2', 'rg_std0_4', 'rg_std0_8']
+
 #Main03 calculate terrain variables
 #default sets of terrain variables
 def main_calc_variables(model_index, path_data, path_output, kernel_size=[0.1,0.2,0.4,0.8], stop_point=-1):
@@ -225,60 +232,158 @@ def main_calc_variables(model_index, path_data, path_output, kernel_size=[0.1,0.
             
         if(i==stop_point): #stop point for test
             break
-    pd.DataFrame(varis).to_csv(path_output+"terrain_variables_"+model_index+".csv",header=False, index=False)
-    return
+    varis=pd.DataFrame(varis)
+    varis.columns=terrain_variables_list
+    varis.to_csv(path_output+"terrain_variables_"+model_index+".csv", header=False, index=False)
 
-def main_ply(model_index, dir_name, param_kernel_labels, path_now, file_name="mydata"):
-    #os.chdir(path_now+"\model"+model_index)
-    import pandas as pd
+#
+def make_occurrence_data3(species_names, model_codes, path_model, path_dataset, date="yymm"):
     import numpy as np
+    import pandas as pd
     import os
-    new_dir_path=path_now+"/model"+model_index+"/variables_map/"
-    os.makedirs(new_dir_path, exist_ok=True)
+    occurrence=pd.DataFrame([])
+    occurrence_monthspecies=pd.DataFrame([])
+            
+    #種ごと→モデルごと→月ごと
+    for specie_name in species_names:
+
+        #モデルごと
+        mesh_num=0
+        for (i, model_index) in enumerate(model_codes):
+            path_data=path_dataset+model_index
+            listsp=[path for path in os.listdir(path_data) if specie_name in path]
+                        
+            #月ごと
+            for path in listsp:
+                month_data=path[-4-len(date):-4]
+                p, v, f=ply_read(path_data+r"/"+path)
+                #出現インデックスの取得
+                try:
+                    faces_color=np.array(f[:,4:7],dtype="int")
+                except:
+                    print("face dataset format error", path)
+                color_focus=np.array([255,255,0])*np.ones((len(faces_color),3))
+                bool_vec=np.sum(faces_color-color_focus,axis=1)
+                ext=np.where(bool_vec==0)[0]
+
+                #モデル番号に応じてメッシュ番号を繰り上げる(maxentで読み込むときに必要な処置)
+                ext=ext+mesh_num
+                ext=np.array(ext, dtype="int")
+                #種名の配列を生成
+                species=np.array([specie_name]*len(ext),dtype="str")
+                species_month=np.array([specie_name+"_"+month_data]*len(ext),dtype="str")
+                #latitude=np.array([model_index[2]]*len(ext), dtype="int")
+                #latitude=np.array([i]*len(ext), dtype="int")
+                latitude=np.array([1]*len(ext), dtype="int")
+                month_data=np.array([str(month_data)]*len(ext))
+                
+                #出現データの生成，保存
+                #出現データは2種類設定．
+                occurrence_tmp=pd.DataFrame([species,ext,latitude])
+                occurrence_tmp=occurrence_tmp.T
+                occurrence_tmp.columns=["species", "dd long", "dd lat"]
+                #speciesに種名，ddlongにメッシュ番号，ddlatにモデル番号を適用する．ddlongは繰り上げする．
+                #本当は経緯データではないので注意，MaxEntに適用するために，疑似経緯データを割り振る
+                occurrence=pd.concat([occurrence, occurrence_tmp])
+
+                occurrence_monthspecies_tmp=pd.DataFrame([species_month,ext,latitude, month_data])
+                occurrence_monthspecies_tmp=occurrence_monthspecies_tmp.T
+                occurrence_monthspecies_tmp.columns=["species_month", "dd long", "dd lat", "month"]
+                occurrence_monthspecies=pd.concat([occurrence_monthspecies, occurrence_monthspecies_tmp])
+            p, v, f=ply_read(path_model+r"/model"+model_index+"_mesh.ply")
+            mesh_num+=len(f)       
+    return(occurrence, occurrence_monthspecies)   
+            
+def make_master_occurrence(path_env, path_occurrence, species, sep):
+    import numpy as np
+    import pandas as pd
+    import copy
+    env_data=pd.read_csv(path_env)
+    occurrence_data=pd.read_csv(path_occurrence)
+    master_data=pd.DataFrame([])
+    for (i, specie) in enumerate(species):
+        if(specie=="background"):
+            data=env_data[::sep].copy() #多すぎるのでランダムに10%だけ使う
+            data["species"]=[specie]*len(data)
+            print(specie, len(data))
+            master_data=pd.concat([master_data,data])
+        else:
+            ext=occurrence_data[occurrence_data.iloc[:,0]==specie].iloc[:,1]
+            print(specie, len(ext))
+            data=env_data.loc[ext,:]
+            data["species"]=[specie]*len(data)
+            master_data=pd.concat([master_data,data])
+    #master_data.to_csv(path_out+"/master_occurrence.csv")
+    return(master_data)
     
-    #パラメータの読み込み
-    ter_variables=pd.read_csv(path_now+"\model"+model_index+"\\"+file_name+model_index+".csv", header=None)
-    ter_variables=ter_variables.astype(float)
     
-    #点の座標，法線，色の読み込み
-    vertice_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_dataset.csv", header=None)
-    vertice_data=vertice_data.round(6)
-    vertice_vector=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_normal.csv", header=None)
-    vertice_vector=vertice_vector.round(6)
-    vertice_color=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_color.csv", header=None)
-    vertice_color=vertice_color.astype(int)
-    vertice_data_all=pd.concat([vertice_data, vertice_vector], axis=1)
+def make_occurrence_data(species_name, model_codes, path_now, path_dataset, date="yymm"):
+    import numpy as np
+    import pandas as pd
+    import os
     
-    #面のデータ
-    faces_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\faces_dataset.csv", header=None)
-    #プロパティ
-    p_file=open(path_now+"\model"+model_index+r"\ply_parts\property_data.csv")
-    property_data=[]
-    for line in p_file:
-        property_data.append(line[1:])
-    property_data=property_data[::2]
+    occurrence=pd.DataFrame([])
+    occurrence_monthspecies=pd.DataFrame([])
+    mesh_num=0
     
-    for (i,param) in enumerate(param_kernel_labels):
-        ter_var=ter_variables.iloc[:,i]
-        color_data=[]
-        try:
-            color_vec, color_data = color_designer5(ter_var, cmap="viridis", mode="1")
-            color_vec=pd.DataFrame(color_vec)
-        except ValueError:
-            color_vec=pd.DataFrame(np.zeros_like(ter_var))
-            print(param,"<- this parameter is all-zero or flat")
-        #色の情報をコメントに記録する
-        import copy
-        property_data2=copy.copy(property_data)
-        property_data2.insert(2, "comment "+str(color_data)+"\n")
-        plydata=array_to_ply(property_data2, vertice_data_all, vertice_color, faces_data, faces_color=color_vec)
-        #record.append(param)
-        save_ply(path_now+"\model"+model_index+"\\"+dir_name+r"/"+param+"f.ply", plydata)
+    for (i, model_index) in enumerate(model_codes):
+        path_data=path_dataset+"/"+model_index
+        listsp=[path for path in os.listdir(path_data) if species_name in path]
+        for path in listsp:
+            #print(path)
+            #調査月日データ
+            month_data=path[-4-len(data):-4]
+            #位置情報読み込み
+            property_data, vertice_dataset, faces_dataset=ply_read(path_data+r"/"+path)
+            #出現インデックスの取得
+            try:
+                faces_color=np.array(faces_dataset[:,4:7],dtype="int")
+            except:
+                print("face dataset format error", path)
+                
+            color_focus=np.array([255,255,0])*np.ones((len(faces_color),3))
+            bool_vec=np.sum(faces_color-color_focus,axis=1)
+            ext=np.where(bool_vec==0)[0]
+
+            #モデル番号に応じてメッシュ番号を繰り上げる(maxentで読み込むときに必要な処置)
+            ext=ext+mesh_num
+            ext=np.array(ext, dtype="int")
+            #種名の配列を生成
+            species=np.array([species_name]*len(ext),dtype="str")
+            species_month=np.array([species_name+"_"+month_data]*len(ext),dtype="str")
+            #latitude=np.array([model_index[2]]*len(ext), dtype="int")
+            #latitude=np.array([i]*len(ext), dtype="int")
+            latitude=np.array([1]*len(ext), dtype="int")
+            month_data=np.array([str(month_data)]*len(ext))
+            #出現データの生成，保存
+            occurrence_tmp=pd.DataFrame([species,ext,latitude])
+            occurrence_tmp=occurrence_tmp.T
+            occurrence_tmp.columns=["species", "dd long", "dd lat"]
+            #speciesに種名，ddlongにメッシュ番号，ddlatにモデル番号を適用する．ddlongは繰り上げする．
+            #本当は経緯データではないので注意，MaxEntに適用するために，疑似経緯データを割り振る
+            occurrence=pd.concat([occurrence, occurrence_tmp])
+
+            occurrence_monthspecies_tmp=pd.DataFrame([species_month,ext,latitude, month_data])
+            occurrence_monthspecies_tmp=occurrence_monthspecies_tmp.T
+            occurrence_monthspecies_tmp.columns=["species_month", "dd long", "dd lat", "month"]
+            occurrence_monthspecies=pd.concat([occurrence_monthspecies, occurrence_monthspecies_tmp])
+        p, v, f_dataset=ply_read(path_data+r"/model"+model_index+"_mesh.ply")
+        mesh_num+=len(f)
+    return(occurrence, occurrence_monthspecies)
 
 
-
-
-
+'''
+def make_occurrence_dataset2(species, model_file_train, path_now, path_out, path_data, filename, date="yymm"):
+    import pandas as pd
+    import numpy as np        
+    data_species=pd.DataFrame([])
+    data_species_month=pd.DataFrame([])
+    for specie in species:
+        data_specie, data_specie_month=make_occurrence_data(species_name=specie, model_codes=model_file_train, path_now=path_now, path_dataset=path_data，date=date)#, save=False)
+        data_species=pd.concat([data_species, data_specie])
+        data_species_month=pd.concat([data_species_month, data_specie_month])
+    data_species.to_csv(path_out+"/occurrence"+filename+".csv", index=False, header=False)
+    data_species_month.to_csv(path_out+"/occurrence_month"+filename+".csv",index=False, header=False)
 
 def make_master_occurrence(path_env, path_occurrence, species, path_out, sep):
     import numpy as np
@@ -300,6 +405,20 @@ def make_master_occurrence(path_env, path_occurrence, species, path_out, sep):
             data["species"]=[specie]*len(data)
             master_data=pd.concat([master_data,data])
     master_data.to_csv(path_out+"/master_occurrence.csv")
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     
     
 def main_pre_maxent(path_now, path_out2, path_dataset, model_file_train, model_file_test, asc, species, param_all_raw):
@@ -342,3 +461,51 @@ def main_pre_maxent(path_now, path_out2, path_dataset, model_file_train, model_f
     path_w=path_out+"/use_model.txt"
     with open(path_w, mode='w') as f:
         f.write(s)
+
+def main_ply(model_index, dir_name, param_kernel_labels, path_now):
+    #os.chdir(path_now+"\model"+model_index)
+    import pandas as pd
+    import numpy as np
+    import os
+    new_dir_path=path_now+"/model"+model_index+"/variables_map/"
+    os.makedirs(new_dir_path, exist_ok=True)
+    
+    #パラメータの読み込み
+    ter_variables=pd.read_csv(path_now+"\model"+model_index+"\\"+file_name+model_index+".csv", header=None)
+    ter_variables=ter_variables.astype(float)
+    
+    #read the vertice coordinates, normals, and colors
+    vertice_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_dataset.csv", header=None)
+    vertice_data=vertice_data.round(6)
+    vertice_vector=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_normal.csv", header=None)
+    vertice_vector=vertice_vector.round(6)
+    vertice_color=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\vertice_color.csv", header=None)
+    vertice_color=vertice_color.astype(int)
+    vertice_data_all=pd.concat([vertice_data, vertice_vector], axis=1)
+    
+    #read the dataset of faces
+    faces_data=pd.read_csv(path_now+"\model"+model_index+r"\ply_parts\faces_dataset.csv", header=None)
+    #read the property
+    p_file=open(path_now+"\model"+model_index+r"\ply_parts\property_data.csv")
+    property_data=[]
+    for line in p_file:
+        property_data.append(line[1:])
+    property_data=property_data[::2]
+    
+    for (i,param) in enumerate(param_kernel_labels):
+        ter_var=ter_variables.iloc[:,i]
+        color_data=[]
+        try:
+            color_vec, color_data = color_designer5(ter_var, cmap="viridis", mode="1")
+            color_vec=pd.DataFrame(color_vec)
+        except ValueError:
+            color_vec=pd.DataFrame(np.zeros_like(ter_var))
+            print(param,"<- this parameter is all-zero or flat")
+        #色の情報をコメントに記録する
+        import copy
+        property_data2=copy.copy(property_data)
+        property_data2.insert(2, "comment "+str(color_data)+"\n")
+        plydata=array_to_ply(property_data2, vertice_data_all, vertice_color, faces_data, faces_color=color_vec)
+        #record.append(param)
+        save_ply(path_now+"\model"+model_index+"\\"+dir_name+r"/"+param+"f.ply", plydata)
+'''

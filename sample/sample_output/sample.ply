@@ -1,0 +1,17 @@
+﻿ply
+format ascii 1.0
+comment VCGLIB generated
+element vertex 6
+property float x
+property float y
+property float z
+property float nx
+property float ny
+property float nz
+end_header
+0.597881 -1.018072 NaN -0.517753 -0.156910 NaN
+-1.112476 -0.771874 -0.023842 -0.517753 -0.156910 -0.841018
+-1.063429 1.187948 -0.419685 -0.517753 -0.156910 -0.841018
+0.646928 0.941749 -1.426693 -0.517753 -0.156910 -0.841018
+1.417691 -1.395696 0.681293 0.554615 0.291909 0.779225
+1.124917 0.533494 0.223379 0.554615 0.291909 0.779225
