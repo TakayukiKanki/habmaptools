@@ -12,6 +12,7 @@ Library (Julia): CSV, Statistics, MultivariateStats, Distances, LinearAlgebra<br
 
 
 #Citation
+Kanki, T., 
 
 #参考情報
 過去に作った似たような名前のリポジトリがありますが，これらは本リポジトリの前身となるものを含みます．
