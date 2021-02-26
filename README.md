@@ -6,9 +6,9 @@ Available on Jupyter notebook/lab.
 Jupyter notebook/labで利用できる形式で作っております．
 
 ##Requrirement  
-Confirmed runnning Python3.5. and Julia1.5.3 on Jupyter lab (ver. **), Windows10, 64bit. (Author's Environment) 
-Library (python): numpy, pandas, matplotlib, scikit-learn, open-cv 
-Library (Julia): CSV, Statistics, MultivariateStats, Distances, LinearAlgebra
+Confirmed runnning Python3.5. and Julia1.5.3 on Jupyter lab (ver. **), Windows10, 64bit. (Author's Environment) 　　
+Library (python): numpy, pandas, matplotlib, scikit-learn, open-cv 　　
+Library (Julia): CSV, Statistics, MultivariateStats, Distances, LinearAlgebra　　
 
 
 #Citation
